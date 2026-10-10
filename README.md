@@ -60,6 +60,7 @@ In case your printer has two sensors (one at toolhead, one before that/outside t
 - ✅ **Tangle Detection (ACE 1 + ACE 2)**: Pauses the print when the ACE pumps continuously against a blocked spool, via the firmware-reported `cont_assist_time` field. ACE 2 firmware never self-detects tangles during feed assist, so host-side monitoring covers it too
 - ✅ **Fast Disconnect Pause**: Pauses within seconds when the ACE feeding the active tool dies mid-print (protocol-aware: ACE 2 clamps the filament and starves the extruder immediately; ACE 1 gets a lenient timeout since the extruder can still pull through it)
 - ✅ **Resume Feed-Assist Verification**: Re-enables feed assist on resume if it was silently lost (ACE power cycle, klippy restart) — prevents "resumed but extruding nothing"
+- ✅ **Feed Assist Pauses While Idle**: Klipper's idle timeout stops the loaded tool's feed assist (a standing assist warms the ACE motor and starts its fan); the next toolhead activity restores it on the same tool
 - ✅ **Feed Fail-Fast**: Load feeds honor the ACE firmware's own error verdict (`feed_error`, `stuck_error`, `tangled_error`, …) and abort within seconds to avoid extruder-assist filament grinding
 - ✅ **Filament Tracker Support**: Works with both `filament_switch_sensor` and `filament_tracker` sensor types
 - ✅ **ACE Temperature Sensor (optional)**: Expose ACE device temperature via `temperature_ace`
@@ -1460,6 +1461,8 @@ When ACE reconnects (after power cycle or USB disconnect), feed assist is automa
 # ACE[0]: Restoring feed assist on slot 2
 # ACE[0]: Feed assist restored on slot 2
 ```
+
+Feed assist also pauses while the printer is idle. When Klipper's `[idle_timeout]` fires, the loaded tool's assist is stopped, so the ACE motor does not keep pushing a standing filament. The next toolhead activity (`idle_timeout` back to Printing) re-enables it, provided the same tool is still loaded; a tool change in between arms the new tool's assist itself.
 
 To disable automatic feed assist restoration:
 

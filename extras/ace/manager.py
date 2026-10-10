@@ -39,6 +39,7 @@ from .instance import AceInstance
 from .ace2_bus import Ace2BusSession
 from .endless_spool import EndlessSpool
 from .runout_monitor import RunoutMonitor
+from .idle_assist import IdleFeedAssist
 from .moonraker_lane_sync import MoonrakerLaneSyncAdapter
 from . import commands
 from .config import read_ace_config
@@ -318,6 +319,7 @@ class AceManager:
         )
 
         self.toolchange_in_progress = False
+        self.idle_feed_assist = IdleFeedAssist(self.printer, self)
 
         # Expose manager state for Moonraker/KlipperScreen JSON-RPC queries
         # (distinct from per-instance printer objects).

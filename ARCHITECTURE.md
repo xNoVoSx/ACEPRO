@@ -351,6 +351,15 @@ This enables precise timing measurements for:
 - Optimizing movement speeds
 - Diagnosing mechanical issues
 
+**Feed Assist While Idle** (`idle_assist.py`): `idle_timeout:idle` stops
+the loaded tool's assist through `disable_feed_assist_for_tool`, which also
+clears the remembered slot, so neither recovery layer below re-arms it.
+The first `idle_timeout:printing` afterwards restores it through
+`verify_feed_assist_for_tool`, only while the same tool is loaded. Both run
+as reactor callbacks: the events arrive in a timer or a toolhead sync, and
+stop/start wait on the ACE. Skipped during a toolchange, which owns assist.
+Proof: `tests/test_idle_assist.py`.
+
 **Feed Assist Loss Recovery (two layers):**
 ACE1 has a single gear assembly per unit — preloading a freshly inserted
 spool physically disables feed assist on the printing slot. ACE2 drives
