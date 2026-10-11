@@ -1957,7 +1957,12 @@ sensor. Decided once per printer in the ACE config.
   sequence Anycubic's firmware runs (avata_main 2.0.2.2, 0x01257778). The
   protocol decides: `build_start_rollback_assist_request` is None for an
   ACE1, which lets go by itself. A refused start raises before the
-  extruder moves. Proof: `tests/test_rollback_assist.py`.
+  extruder moves. After it, the unload pulls an ACE2's filament out
+  slowly before the full-speed pull back (`slow_first_unwind`: 40 mm at
+  4 mm/s, stock's "low speed unwind" before its "high speed unwind" at
+  50 mm/s; 0x0125d6a8, 0x0125f5fc). Stock repeats the slow pull until the
+  inlet switch clears; here the extruder has cleared it already, so it is
+  made once, as stock's first try is. Proof: `tests/test_rollback_assist.py`.
 - Proof: `tests/test_intake_gated.py`, `tests/test_intake_gated_wiring.py`.
 
 ### Printer-side path selection (`_ACE_ROUTE_TOOL`)

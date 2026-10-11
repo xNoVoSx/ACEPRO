@@ -41,6 +41,9 @@ class FakeProtocol:
     def build_stop_unwind_filament_request(self, slot):
         return {"stop": slot}
 
+    def slow_first_unwind(self):
+        return (40.0, 4.0) if self.clamps else None
+
 
 class FakeReactor:
     def monotonic(self):
@@ -156,3 +159,41 @@ def test_the_console_shows_when_the_rollback_assist_runs():
     lines = [m for m in instance.messages if "rollback assist" in m.lower()]
     assert len(lines) == 2
     assert all(f"slot {SLOT}" in m for m in lines)
+
+
+# --- the slow first pull ------------------------------------------------
+# Stock pulls an ACE2's filament out of the inlet slowly before the
+# full-speed pull back: "low speed unwind" 40 mm at 4 mm/s, then "high speed
+# unwind" at 50 mm/s (avata_main 2.0.2.2, 0x0125d6a8 and 0x0125f5fc).
+
+
+def test_an_ace2_unload_pulls_slowly_first_then_at_full_speed():
+    instance = Ace2Instance(ClampedFilament(tip=30.0))
+
+    unload(instance)
+
+    steps = instance.steps
+    assert steps.index("rollback assist off") < steps.index("ace retract 2 40@4") \
+        < steps.index("ace retract 2 90@50")
+
+
+def test_an_ace1_unload_has_no_slow_first_pull():
+    instance = Ace2Instance(FakeFilament(tip=30.0), clamps=False)
+
+    unload(instance)
+
+    assert [s for s in instance.steps if s.startswith("ace retract")] == \
+        ["ace retract 2 90@50"]
+
+
+def test_a_park_makes_no_ace_pull_at_all():
+    instance = Ace2Instance(ClampedFilament(tip=30.0))
+
+    park(instance)
+
+    assert not any(s.startswith("ace retract") for s in instance.steps)
+
+
+def test_the_ace2_slow_first_pull_is_stocks():
+    assert AceProtoProtocolAdapter().slow_first_unwind() == (40.0, 4.0)
+    assert AceJsonProtocolAdapter().slow_first_unwind() is None

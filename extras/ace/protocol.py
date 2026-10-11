@@ -366,6 +366,12 @@ class AceProtocolAdapter:
         build_stop_unwind_filament_request."""
         return None
 
+    def slow_first_unwind(self) -> Tuple[float, float] | None:
+        """(length mm, speed mm/s) of a slow pull out of the toolhead's
+        inlet that an unload makes before the full-speed pull back, or None
+        for none."""
+        return None
+
     def feed_assist_causes_busy(self) -> bool:
         """Return True if activating feed assist transitions the device to a non-ready status.
 

@@ -738,6 +738,13 @@ class AceProtoProtocolAdapter(AceProtocolAdapter):
             },
         )
 
+    def slow_first_unwind(self) -> Tuple[float, float]:
+        """Anycubic's firmware pulls an ACE2's filament out of the inlet
+        at 4 mm/s first ("low speed unwind", 40 mm, until the inlet switch
+        clears) and only then at full speed (avata_main 2.0.2.2,
+        0x0125d6a8 and 0x0125f5fc)."""
+        return (40.0, 4.0)
+
     def build_feed_filament_request(
         self,
         slot: int,
