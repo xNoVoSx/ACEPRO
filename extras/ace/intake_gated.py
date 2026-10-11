@@ -252,7 +252,11 @@ class IntakeGatedTransfer:
             self._retract_out_of_gear(extruder_speed)
         slow_pull = instance.protocol.slow_first_unwind()
         if slow_pull is not None:
-            instance._retract(local_slot, *slow_pull)
+            length, speed = slow_pull
+            instance.gcode.respond_info(
+                f"ACE[{instance.instance_num}]: Slow first pull of slot "
+                f"{local_slot}: {length:.0f}mm at {speed:.0f}mm/s")
+            instance._retract(local_slot, length, speed)
         if park is not None:
             return park()
         instance._retract(local_slot, instance.parkposition_to_toolhead_length,

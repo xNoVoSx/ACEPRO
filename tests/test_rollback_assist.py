@@ -197,3 +197,13 @@ def test_a_park_makes_no_ace_pull_at_all():
 def test_the_ace2_slow_first_pull_is_stocks():
     assert AceProtoProtocolAdapter().slow_first_unwind() == (40.0, 4.0)
     assert AceJsonProtocolAdapter().slow_first_unwind() is None
+
+
+def test_the_console_shows_the_slow_first_pull():
+    instance = Ace2Instance(ClampedFilament(tip=30.0))
+
+    unload(instance)
+
+    lines = [m for m in instance.messages if "slow" in m.lower()]
+    assert len(lines) == 1
+    assert "40" in lines[0] and "4" in lines[0] and f"slot {SLOT}" in lines[0]
