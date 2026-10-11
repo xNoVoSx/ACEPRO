@@ -29,3 +29,11 @@ inlet through the RDM. Everything below is optional, to be picked up later.
 5. **ACE USB drops** (optional, watch). 17 drops before the cable swap, none
    in about 8 tool changes since. Re-check the count after longer use; the
    ACE's internal hub sits at 1-1.3, the ACE device at 1-1.3.3.
+6. **Rollback assist in the default strategy** (optional, needs an ACE2 on a
+   `sensor_push` printer to test). `execute_coordinated_retraction`
+   (`manager.py`, test retracts that identify an unknown tool) lets the ACE
+   retract run to completion before its `G1 E-`, so on an ACE2 that
+   extruder retract pulls against the idle clamp. Wrap it in
+   `rollback_assist()` as `intake_gated.py` does, or start the ACE pull
+   without waiting so both run together. The 2 mm pre-cut retract of
+   `PREPARE_RETRACT` is the same case at a size that hardly matters.
