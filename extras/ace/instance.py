@@ -18,6 +18,10 @@ from .config import (
     FILAMENT_STATE_SPLITTER,
     FILAMENT_STATE_TOOLHEAD,
     FILAMENT_STATE_NOZZLE,
+    SLOT_PARK_STATE_UNKNOWN,
+    SLOT_PARK_STATE_PARKED,
+    SLOT_PARK_STATE_LOADED,
+    SLOT_PARK_STATES,
     RFID_STATE_NO_INFO,
     RFID_STATE_IDENTIFIED,
     MAX_RETRIES,
@@ -165,6 +169,8 @@ class AceInstance:
         # device status has been applied (see _status_update_callback)
         self._device_status_seen = False
         self.inventory = create_inventory(self.SLOT_COUNT)
+        # Where each slot's filament was last left by the driver (see config.SLOT_PARK_STATES)
+        self.slot_park_state = [SLOT_PARK_STATE_UNKNOWN] * self.SLOT_COUNT
         self._feed_assist_index = -1
         self._feed_assist_topology_position = None  # Track chain position (0, 1, 2...)
         self._feed_assist_stop_sent_at = 0.0  # reactor time of the last stop request
@@ -559,6 +565,21 @@ class AceInstance:
         else:
             self._enable_feed_assist(slot_index)
 
+    def set_slot_park_state(self, slot, state):
+        """Record where a slot's filament was last left by the driver.
+
+        Every feed/retract request marks the slot "unknown"; only a completed,
+        sensor-verified operation marks it "parked" or "loaded" afterwards.
+        """
+        if state not in SLOT_PARK_STATES:
+            raise ValueError(f"Invalid slot park state: {state}")
+        if 0 <= slot < self.SLOT_COUNT and self.slot_park_state[slot] != state:
+            logging.info(
+                f"ACE[{self.instance_num}]: slot {slot} park_state "
+                f"{self.slot_park_state[slot]} -> {state}"
+            )
+            self.slot_park_state[slot] = state
+
     def _get_current_feed_assist_index(self):
         """Get the current feed assist slot index (-1 if disabled)."""
         return self._feed_assist_index
@@ -726,6 +747,7 @@ class AceInstance:
     def _feed(self, slot, length, speed, callback=None):
         """Feed filament from slot."""
         self._ensure_feed_assist_off_for_motion(slot, "feed")
+        self.set_slot_park_state(slot, SLOT_PARK_STATE_UNKNOWN)
         self.gcode.respond_info(
             f"ACE[{self.instance_num}]: _feed() -> slot={slot}, "
             f"length={length}mm, speed={speed}mm/s"
@@ -834,6 +856,7 @@ class AceInstance:
         # Must run BEFORE wait_ready(): with assist active, ACE2 is 'busy'
         # by design and wait_ready() would stall without this.
         self._ensure_feed_assist_off_for_motion(slot, "retract")
+        self.set_slot_park_state(slot, SLOT_PARK_STATE_UNKNOWN)
 
         self.wait_ready()
         self._last_retract_early_stopped = False
@@ -1245,6 +1268,7 @@ class AceInstance:
         self.state.set(
             "ace_filament_pos", FILAMENT_STATE_NOZZLE
         )
+        self.set_slot_park_state(local_slot, SLOT_PARK_STATE_LOADED)
 
         return self.toolhead_full_purge_length
 
@@ -1352,6 +1376,7 @@ class AceInstance:
             dict: Response from ACE
         """
         self._ensure_feed_assist_off_for_motion(slot, "feed (sync)")
+        self.set_slot_park_state(slot, SLOT_PARK_STATE_UNKNOWN)
         self.gcode.respond_info(
             f"ACE[{self.instance_num}]: feed_filament_with_wait_for_response() -> slot={slot}, "
             f"length={length}mm, speed={speed}mm/s"
@@ -1508,7 +1533,8 @@ class AceInstance:
             )
             self._restore_assist_after_unload(manager, f_index)
             # If the sensor already cleared, the physical unload succeeded
-            # even if wait_ready timed out afterward
+            # even if wait_ready timed out afterward. The end position is
+            # unconfirmed though, so park_state stays unknown.
             return rdm_state["cleared"]
 
         self._restore_assist_after_unload(manager, f_index)
@@ -1524,6 +1550,7 @@ class AceInstance:
                 f"completed in {total:.1f}s "
                 f"(sensor cleared at {rdm_state['clear_time']:.1f}s)"
             )
+            self.set_slot_park_state(slot, SLOT_PARK_STATE_PARKED)
             return True
         else:
             self.gcode.respond_info(
@@ -1668,6 +1695,8 @@ class AceInstance:
                     self.gcode.respond_info(
                         f"ACE[{self.instance_num}]: ✓ Path clear (both sensors)"
                     )
+                    if not self._last_retract_early_stopped:
+                        self.set_slot_park_state(slot, SLOT_PARK_STATE_PARKED)
                     return True
                 else:
                     if not self.rmd_triggered_unload_slot(self.manager, slot, length, self.parkposition_to_rdm_length):
@@ -1701,6 +1730,8 @@ class AceInstance:
                     self.gcode.respond_info(
                         f"ACE[{self.instance_num}]: ✓ Toolhead sensor clear"
                     )
+                    if not self._last_retract_early_stopped:
+                        self.set_slot_park_state(slot, SLOT_PARK_STATE_PARKED)
                     return True
                 else:
                     self.gcode.respond_info(
@@ -1875,6 +1906,18 @@ class AceInstance:
                     # Detect state changes
                     if old_status != new_status:
                         inventory_changed = True
+                        # A spool was inserted or ran out: whatever position we
+                        # knew for this slot no longer applies. Motion states
+                        # (shifting/feeding/unwinding) are not spool changes:
+                        # every commanded move walks the slot through them,
+                        # and an ACE 2 reports shifting for as long as feed
+                        # assist is on. Those moves are covered by the hooks
+                        # in _feed()/_retract().
+                        if (
+                            old_status == AceSlotStateMachineState.EMPTY.value
+                            or new_status == AceSlotStateMachineState.EMPTY.value
+                        ):
+                            self.set_slot_park_state(idx, SLOT_PARK_STATE_UNKNOWN)
 
                         # ANY slot reaching ready means a (pre)load cycle just
                         # finished - the ACE hardware disables feed assist
@@ -2552,6 +2595,7 @@ class AceInstance:
                 "material": inv.get("material"),
                 "temp": inv.get("temp"),
                 "rfid": inv.get("rfid", False),
+                "park_state": self.slot_park_state[i],
             }
             live = live_slots.get(i) or {}
             for key in ("status_detail", "status_code"):
