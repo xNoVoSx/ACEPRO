@@ -146,3 +146,13 @@ def test_the_ace2_request_is_feed_or_rollback_mode_3():
 
 def test_an_ace1_has_no_rollback_assist_request():
     assert AceJsonProtocolAdapter().build_start_rollback_assist_request(SLOT) is None
+
+
+def test_the_console_shows_when_the_rollback_assist_runs():
+    instance = Ace2Instance(ClampedFilament(tip=30.0))
+
+    unload(instance)
+
+    lines = [m for m in instance.messages if "rollback assist" in m.lower()]
+    assert len(lines) == 2
+    assert all(f"slot {SLOT}" in m for m in lines)

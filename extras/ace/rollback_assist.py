@@ -22,7 +22,11 @@ def rollback_assist(instance, slot):
     if start is None:
         yield
         return
+    name = f"ACE[{instance.instance_num}]"
     _send_and_confirm(instance, start, f"start rollback assist on slot {slot}")
+    instance.gcode.respond_info(
+        f"{name}: Rollback assist on slot {slot} - the ACE follows the "
+        f"extruder's retract")
     try:
         yield
     finally:
@@ -31,6 +35,8 @@ def rollback_assist(instance, slot):
                           f"stop rollback assist on slot {slot}")
         # The ACE2 is busy while assisting; the next command waits for it.
         instance.wait_ready()
+        instance.gcode.respond_info(
+            f"{name}: Rollback assist on slot {slot} stopped")
 
 
 def _send_and_confirm(instance, request, what):
