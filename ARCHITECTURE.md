@@ -369,9 +369,12 @@ the slot-load restore — its layer 2 covers other loss causes.
 Tangle detection is blind in that state (no pumping → no
 `cont_assist_time` signal), so recovery must be driven by the driver:
 1. **Slot-ready restore** (both generations, `_status_update_callback`):
-   any slot transitioning INTO `ready` marks a finished (pre)load cycle
-   and queues a restore of the remembered assist slot. Triggers on any
-   `* → ready` transition — the 1 Hz heartbeat almost always samples the
+   any other slot transitioning INTO `ready` marks a finished (pre)load
+   cycle and queues a restore of the remembered assist slot. The assisted
+   slot itself is excluded: enabling assist makes ACE1 report it
+   `shifting` for about a second, and its return to `ready` is that
+   enable (`test_the_assisted_slots_own_gear_shift_queues_no_restore`).
+   Triggers on any `* → ready` transition — the 1 Hz heartbeat almost always samples the
    intermediate `preload`/`identifying` states, so the previous
    `empty → ready`-only condition virtually never matched. The restore
    goes through the retrying pending-restore queue rather than a direct

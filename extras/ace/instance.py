@@ -1884,8 +1884,11 @@ class AceInstance:
                         # matches directly (inserting a spool into T0 mid-print
                         # silently kills feed assist on the printing T1).
                         # Trigger the restore on any transition into ready
-                        # instead.
-                        if new_status == AceSlotStateMachineState.READY.value:
+                        # instead - of another slot: enabling assist makes
+                        # the assisted slot itself report 'shifting' for a
+                        # second, and its return to ready is that enable.
+                        if (new_status == AceSlotStateMachineState.READY.value
+                                and idx != feed_assist_was_active):
                             filament_loaded = True
 
                         # Log the state transition
