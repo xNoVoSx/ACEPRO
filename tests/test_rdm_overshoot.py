@@ -1,45 +1,76 @@
-"""The RDM-monitored unload's overshoot is a move of its own.
+"""The RDM-monitored unload pulls the overshoot within the same retract.
 
-The unload retracts at most `length` and stops once the RDM clears; the
-overshoot then pulls the tip `rdm_overshoot_length` further, past the
-4-in-1's merge point. When the RDM clears only after that retract has
-ended - on the Kobra X the toolhead-to-RDM path is about as long as the
-maximum - there is no running move left to extend, and the tip stayed at
-the switch, in the merge, blocking the next slot.
+The unload retracts at most `length` and, once the RDM clears, on for
+`rdm_overshoot_length` past the 4-in-1's merge point. One ACE command
+covers both: a stop and a second retract make the ACE disengage and engage
+its gears again. The overshoot is timed from the clear at the retract
+speed, as the ACE reports no position.
 
-The ACE's retract (_retract, the serial boundary) is replaced by a fake
-that records the moves and reports the RDM state the scenario sets.
+When the RDM clears only after that retract has ended - on the Kobra X the
+toolhead-to-RDM path is about as long as the maximum - there is no running
+move left to extend, and the tip stayed at the switch, in the merge,
+blocking the next slot; the overshoot is then a move of its own.
+
+The ACE's retract (_retract, the serial boundary) is replaced by a fake that
+runs on a stepped clock: it polls the callback every POLL_S like _retract,
+moves at the commanded speed and records where it was stopped.
 """
 from unittest.mock import Mock
+
+import pytest
 
 from ace.instance import AceInstance
 
 SLOT = 1
 SPEED = 50.0
+POLL_S = 0.2
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def time(self):
+        return self.now
 
 
 class FakeAce:
-    """Records retracts; the RDM clears when `clears_after` retracts ended,
-    or never when it is None."""
+    """The RDM sees filament until `clears_at` seconds into the first
+    retract (never when None)."""
 
-    def __init__(self, clears_after):
-        self.moves = []
-        self.clears_after = clears_after
+    def __init__(self, clock, clears_at):
+        self.clock = clock
+        self.clears_at = clears_at
+        self.start = clock.now
+        self.moves = []          # (slot, commanded length, length pulled)
         self.manager = Mock()
         self.manager.has_rdm_sensor.return_value = True
         self.manager.get_instant_switch_state.side_effect = self.rdm_present
 
     def rdm_present(self, sensor):
-        return self.clears_after is None or len(self.moves) < self.clears_after
+        return (self.clears_at is None
+                or self.clock.now - self.start < self.clears_at)
 
     def retract(self, slot, length, speed, early_stop_callback=None, **kwargs):
-        self.moves.append((slot, length, speed))
-        # The move runs to its end, then the callback sees the sensor.
-        if early_stop_callback is not None:
-            reason = early_stop_callback()
-            if reason:
-                return {"code": 0, "msg": "Retract stopped early: %s" % reason}
+        began = self.clock.now
+        duration = length / speed
+        while self.clock.now - began < duration:
+            self.clock.now = min(self.clock.now + POLL_S, began + duration)
+            if early_stop_callback is not None and early_stop_callback():
+                break
+        else:
+            # _retract keeps polling while it waits for the ACE's ready.
+            if early_stop_callback is not None:
+                early_stop_callback()
+        self.moves.append((slot, length, (self.clock.now - began) * speed))
         return {"code": 0, "msg": "success"}
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    clock = Clock()
+    monkeypatch.setattr("ace.instance.time.time", clock.time)
+    return clock
 
 
 def _instance(fake):
@@ -56,25 +87,39 @@ def _instance(fake):
     return inst
 
 
-def test_the_overshoot_is_retracted_when_the_rdm_clears_after_the_move():
-    fake = FakeAce(clears_after=1)
-    ok = _instance(fake).rmd_triggered_unload_slot(
-        fake.manager, SLOT, length=650, overshoot_length=200)
-    assert ok
-    assert fake.moves == [(SLOT, 650, SPEED), (SLOT, 200, SPEED)]
+def _unload(fake, length, overshoot):
+    return _instance(fake).rmd_triggered_unload_slot(
+        fake.manager, SLOT, length=length, overshoot_length=overshoot)
 
 
-def test_no_overshoot_when_the_rdm_never_clears():
-    fake = FakeAce(clears_after=None)
-    ok = _instance(fake).rmd_triggered_unload_slot(
-        fake.manager, SLOT, length=650, overshoot_length=200)
-    assert not ok
-    assert fake.moves == [(SLOT, 650, SPEED)]
+def test_one_retract_pulls_on_past_the_clear_by_the_overshoot(clock):
+    fake = FakeAce(clock, clears_at=14.5)
+    assert _unload(fake, length=900, overshoot=200)
+    assert len(fake.moves) == 1
+    slot, commanded, pulled = fake.moves[0]
+    assert (slot, commanded) == (SLOT, 1100)
+    past_clear = pulled - 14.5 * SPEED
+    assert 200 <= past_clear <= 200 + POLL_S * SPEED
 
 
-def test_a_zero_overshoot_adds_no_move():
-    fake = FakeAce(clears_after=1)
-    ok = _instance(fake).rmd_triggered_unload_slot(
-        fake.manager, SLOT, length=650, overshoot_length=0)
-    assert ok
-    assert fake.moves == [(SLOT, 650, SPEED)]
+def test_the_overshoot_is_its_own_retract_when_the_move_ends_too_soon(
+        clock):
+    # The 850 mm move ends at 17 s: 2 s after the clear, half the overshoot.
+    fake = FakeAce(clock, clears_at=15.0)
+    assert _unload(fake, length=650, overshoot=200)
+    assert [m[:2] for m in fake.moves] == [(SLOT, 850), (SLOT, 200)]
+
+
+def test_no_overshoot_when_the_rdm_never_clears(clock):
+    fake = FakeAce(clock, clears_at=None)
+    assert not _unload(fake, length=650, overshoot=200)
+    assert [m[:2] for m in fake.moves] == [(SLOT, 850)]
+
+
+def test_a_zero_overshoot_stops_at_the_clear(clock):
+    fake = FakeAce(clock, clears_at=5.0)
+    assert _unload(fake, length=650, overshoot=0)
+    assert len(fake.moves) == 1
+    slot, commanded, pulled = fake.moves[0]
+    assert (slot, commanded) == (SLOT, 650)
+    assert 5.0 * SPEED <= pulled <= (5.0 + POLL_S) * SPEED

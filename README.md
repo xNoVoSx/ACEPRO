@@ -869,7 +869,7 @@ ACE supports both `filament_switch_sensor <name>` and `filament_tracker <name>` 
 `filament_runout_sensor_name_nozzle` is required.
 `filament_runout_sensor_name_rdm` is optional and helps verify the filament has fully retracted to the hub.
 
-`rdm_overshoot_length` is optional unload tuning (default 50mm): after RDM clears during callback-driven retract, ACE continues retracting by this extra distance before stop.
+`rdm_overshoot_length` is optional unload tuning (default 50mm): after RDM clears during callback-driven retract, ACE continues retracting by this extra distance before stop. It runs within the same retract command, timed at `retract_speed` (the ACE reports no position), so the ACE does not stop and re-engage its gears; only when that retract ends before the overshoot has run does the whole overshoot follow as a retract of its own.
 
 ```ini
 [ace]

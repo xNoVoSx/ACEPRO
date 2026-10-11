@@ -1419,13 +1419,18 @@ class AceInstance:
     def rmd_triggered_unload_slot(self, manager, slot, length, overshoot_length):
         """Unload slot with RDM sensor monitoring during retraction.
 
-        Monitors the RDM sensor via _retract(early_stop_callback=...) and
-        stops retraction as soon as the filament clears, plus overshoot.
+        One retract of length + overshoot_length, monitored through
+        _retract(early_stop_callback=...): it is stopped overshoot_length
+        after the RDM clears, timed at the retract speed (the ACE reports no
+        position). One command, because a stop and a second retract make
+        the ACE disengage and engage its gears again. When the move ends
+        before the overshoot has run, the whole overshoot follows as a
+        retract of its own.
 
         Args:
             manager: AceManager instance (for sensor access)
             slot: Local slot index (0-3)
-            length: Maximum retract distance (mm) — safety limit
+            length: Maximum retract distance before the clear (mm)
             overshoot_length: Extra mm to retract after sensor clears
         Returns:
             True if sensor cleared and retract stopped, False on timeout
@@ -1440,6 +1445,7 @@ class AceInstance:
         rdm_state = {
             "cleared": False,
             "clear_time": None,
+            "overshoot_done": False,
             "start_time": time.time(),
             "last_log": 0,
         }
@@ -1467,7 +1473,13 @@ class AceInstance:
                     f"ACE[{self.instance_num}]: RDM CLEAR after {elapsed:.1f}s — "
                     f"applying {overshoot_length}mm overshoot"
                 )
-                return f"RDM clear at {elapsed:.1f}s"
+
+            if rdm_state["cleared"] and not rdm_state["overshoot_done"]:
+                past_clear_s = elapsed - rdm_state["clear_time"]
+                if past_clear_s >= overshoot_length / self.retract_speed:
+                    rdm_state["overshoot_done"] = True
+                    return (f"RDM clear at {rdm_state['clear_time']:.1f}s "
+                            f"plus {overshoot_length}mm overshoot")
 
             return None
 
@@ -1479,13 +1491,15 @@ class AceInstance:
 
         try:
             result = self._retract(
-                slot, length, self.retract_speed,
+                slot, length + overshoot_length, self.retract_speed,
                 early_stop_callback=rdm_early_stop_check,
             )
-            # A move of its own: the RDM may clear only after the retract
-            # above has ended (Kobra X: the path back to the RDM is about as
-            # long as `length`), and then no running move is left to extend.
-            if rdm_state["cleared"] and overshoot_length > 0:
+            # The RDM may clear too late for the move to hold the overshoot
+            # (Kobra X: the path back to the RDM is about as long as
+            # `length`). How far it got past the clear is a guess from the
+            # time, and a short tip blocks the next slot in the merge, so
+            # the whole overshoot follows.
+            if rdm_state["cleared"] and not rdm_state["overshoot_done"]:
                 self._retract(slot, overshoot_length, self.retract_speed)
         except Exception as e:
             self._stop_retract(slot)
