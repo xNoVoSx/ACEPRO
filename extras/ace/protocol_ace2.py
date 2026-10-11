@@ -723,6 +723,21 @@ class AceProtoProtocolAdapter(AceProtocolAdapter):
             {"index": slot_index},
         )
 
+    def build_start_rollback_assist_request(self, slot_index: int) -> Dict[str, Any]:
+        """An ACE2 clamps the filament while idle: an extruder retract
+        slips against it. Anycubic's firmware wraps the unload's extruder
+        retract in this mode (avata_main 2.0.2.2: FEED_OR_ROLLBACK mode 3,
+        "rollback_assist", length and speed 0)."""
+        return self._build_command_request(
+            "FEED_OR_ROLLBACK",
+            {
+                "index": slot_index,
+                "speed": 0,
+                "length": 0,
+                "mode": 3,
+            },
+        )
+
     def build_feed_filament_request(
         self,
         slot: int,

@@ -1948,8 +1948,16 @@ sensor. Decided once per printer in the ACE config.
   parking from `perform_tool_change` on its own - a single-gear toolhead
   cannot hold a parked filament out of the next one's way. Proof:
   `tests/test_intake_parking.py`.
-- Not yet: the ACE Pro 2's rollback-assist mode during the extruder retract;
-  the unload relies on an idle ACE letting the filament be pushed back.
+- Rollback assist (`extras/ace/rollback_assist.py`): an ACE2 clamps the
+  filament while idle, so the extruder-only retract of unload and park
+  slipped against it (Kobra X: 100 mm retracted, about 40 mm moved, the
+  toolhead sensor never cleared). Both run that retract inside
+  `rollback_assist()`: `FEED_OR_ROLLBACK` mode 3, length and speed 0, then
+  `STOP_FEED_OR_ROLLBACK` and `wait_ready` however the retract ends - the
+  sequence Anycubic's firmware runs (avata_main 2.0.2.2, 0x01257778). The
+  protocol decides: `build_start_rollback_assist_request` is None for an
+  ACE1, which lets go by itself. A refused start raises before the
+  extruder moves. Proof: `tests/test_rollback_assist.py`.
 - Proof: `tests/test_intake_gated.py`, `tests/test_intake_gated_wiring.py`.
 
 ### Printer-side path selection (`_ACE_ROUTE_TOOL`)

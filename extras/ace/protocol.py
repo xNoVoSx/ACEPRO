@@ -359,6 +359,13 @@ class AceProtocolAdapter:
         """Build a request to disable feed assist for a slot."""
         raise NotImplementedError()
 
+    def build_start_rollback_assist_request(self, slot_index: int) -> Dict[str, Any] | None:
+        """Build a request that makes the unit follow while the extruder pulls
+        the slot's filament back, or None for a unit that lets the filament
+        go by itself while idle and needs none. Stopped with
+        build_stop_unwind_filament_request."""
+        return None
+
     def feed_assist_causes_busy(self) -> bool:
         """Return True if activating feed assist transitions the device to a non-ready status.
 

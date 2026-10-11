@@ -18,6 +18,7 @@ Selected with ``toolhead_strategy: intake_gated``; the default,
 """
 
 from .config import SENSOR_TOOLHEAD
+from .rollback_assist import rollback_assist
 
 STRATEGY_SENSOR_PUSH = "sensor_push"
 STRATEGY_INTAKE_GATED = "intake_gated"
@@ -215,8 +216,9 @@ class IntakeGatedTransfer:
         the gear, for load(parked=True). Raises ValueError when the sensor
         does not clear."""
         instance = self.instance
-        retracted = self._extruder_until(self._clear_of_toolhead_sensor, -1,
-                                         extruder_speed, extruder_limit)
+        with rollback_assist(instance, local_slot):
+            retracted = self._extruder_until(self._clear_of_toolhead_sensor,
+                                             -1, extruder_speed, extruder_limit)
         if not self._clear_of_toolhead_sensor():
             raise ValueError(
                 f"ACE[{instance.instance_num}]: Toolhead sensor still "
@@ -238,14 +240,16 @@ class IntakeGatedTransfer:
         filament. Returns whether the park step succeeded; raises
         ValueError when the filament does not leave sensor or gear."""
         instance = self.instance
-        self._extruder_until(self._clear_of_toolhead_sensor, -1,
-                             extruder_speed, extruder_limit)
-        if not self._clear_of_toolhead_sensor():
-            raise ValueError(
-                f"ACE[{instance.instance_num}]: Toolhead sensor still sees "
-                f"filament after {extruder_limit:.0f}mm of extruder retract."
-            )
-        self._retract_out_of_gear(extruder_speed)
+        with rollback_assist(instance, local_slot):
+            self._extruder_until(self._clear_of_toolhead_sensor, -1,
+                                 extruder_speed, extruder_limit)
+            if not self._clear_of_toolhead_sensor():
+                raise ValueError(
+                    f"ACE[{instance.instance_num}]: Toolhead sensor still "
+                    f"sees filament after {extruder_limit:.0f}mm of extruder "
+                    f"retract."
+                )
+            self._retract_out_of_gear(extruder_speed)
         if park is not None:
             return park()
         instance._retract(local_slot, instance.parkposition_to_toolhead_length,

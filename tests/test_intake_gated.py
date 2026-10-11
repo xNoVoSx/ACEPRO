@@ -13,6 +13,7 @@ of polls, and the toolhead sensor follows the extruder's position.
 import pytest
 
 from ace.intake_gated import IntakeGatedTransfer, resolve_intake_sensor
+from ace.protocol_ace1 import AceJsonProtocolAdapter
 
 SLOT = 2
 
@@ -78,6 +79,8 @@ class FakeInstance:
     parkposition_to_toolhead_length = 90.0
     retract_speed = 50.0
     intake_clear_length = 15.0
+    # An ACE1: lets the filament go while idle, no rollback assist.
+    protocol = AceJsonProtocolAdapter()
 
     def __init__(self, filament, polls_to_intake=3):
         self.filament = filament
