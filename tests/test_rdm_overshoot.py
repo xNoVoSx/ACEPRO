@@ -76,6 +76,8 @@ def clock(monkeypatch):
 def _instance(fake):
     inst = object.__new__(AceInstance)
     inst.instance_num = 0
+    inst.SLOT_COUNT = 4
+    inst.slot_park_state = ["unknown"] * inst.SLOT_COUNT  # set_slot_park_state() writes here on success
     inst.retract_speed = SPEED
     inst.gcode = Mock()
     inst.reactor = Mock()
