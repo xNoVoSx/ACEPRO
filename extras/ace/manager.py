@@ -1440,6 +1440,13 @@ class AceManager:
             self.gcode.respond_info(
                 f"ACE: No tool on record - the toolhead holds T{tool}")
             return tool
+        # On a shared tube the toolhead cannot name the slot, but a tool
+        # park_tool() left there is on record here.
+        parked = self.parked_tools()
+        if self.toolhead_paths == PATHS_SHARED and len(parked) == 1:
+            self.gcode.respond_info(
+                f"ACE: No tool on record - T{parked[0]} is parked at the toolhead")
+            return parked[0]
         if self.transfers and self.get_switch_state(SENSOR_TOOLHEAD):
             raise Exception(
                 "ACE: Filament at the toolhead, but no tool on record and "

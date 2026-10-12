@@ -212,6 +212,35 @@ class TestUnknownFilamentAtTheToolhead:
         manager._cycling_unload_fallback = Mock(return_value=True)
         return run(instance, lambda: manager.smart_unload(-1))
 
+    def unload_unknown_with_parked(self, paths, parked):
+        manager, instance = manager_with(paths)
+        manager.state.get = Mock(side_effect=lambda key, default=None: {
+            "ace_current_index": -1,
+            "ace_parked_tools": list(parked)}.get(key, default))
+        manager.prepare_toolhead_for_filament_retraction = Mock()
+        manager._cycling_unload_fallback = Mock(return_value=True)
+        manager._smart_unload = Mock(return_value=True)
+        return manager, instance
+
+    def test_the_one_tool_parked_in_the_shared_tube_is_the_filament(self):
+        # The toolchanger cannot name a slot on a shared inlet, but the
+        # driver's own record says which tool it parked there.
+        manager, instance = self.unload_unknown_with_parked(PATHS_SHARED, [9])
+
+        assert run(instance, lambda: manager.smart_unload(-1)) is True
+
+        assert manager._smart_unload.call_args[0][0] == 9
+        manager.state.set.assert_any_call("ace_parked_tools", [])
+
+    def test_a_parked_tool_does_not_decide_with_a_tube_per_tool(self):
+        # There the inlet switch names the slot; a stale park record must not.
+        manager, instance = self.unload_unknown_with_parked(PATHS_PER_TOOL, [9])
+
+        with pytest.raises(Exception, match="cannot tell"):
+            run(instance, lambda: manager.smart_unload(-1))
+
+        manager._smart_unload.assert_not_called()
+
     def test_it_is_not_guessed_by_test_retracts(self):
         manager, instance = manager_with(PATHS_PER_TOOL)
 
