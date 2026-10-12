@@ -11,6 +11,7 @@ from .config import (
     FILAMENT_STATE_NOZZLE,
     FILAMENT_STATE_TOOLHEAD,
     SLOT_PARK_STATE_PARKED,
+    SLOT_PARK_STATE_UNKNOWN,
     OVERRIDABLE_PARAMS,
     CHOICE_OVERRIDABLE_PARAMS,
     get_instance_from_tool,
@@ -1386,6 +1387,8 @@ class AceManager:
                 self.gcode.run_script_from_command("G92 E0")
                 self.gcode.run_script_from_command("G90")
         self.state.set("ace_filament_pos", FILAMENT_STATE_BOWDEN)
+        # Parked at the intake: neither loaded nor at the ACE park position.
+        instance.set_slot_park_state(local_slot, SLOT_PARK_STATE_UNKNOWN)
         self._set_parked(tool_index, True)
         self.gcode.respond_info(f"ACE: Tool {tool_index} parked")
         self._restore_heater_if_idle()

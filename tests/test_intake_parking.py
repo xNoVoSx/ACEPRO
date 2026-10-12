@@ -15,7 +15,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ace.config import FILAMENT_STATE_BOWDEN, SENSOR_TOOLHEAD
+from ace.config import FILAMENT_STATE_BOWDEN, SENSOR_TOOLHEAD, SLOT_PARK_STATE_UNKNOWN
 from ace.intake_gated import PATHS_PER_TOOL, PATHS_SHARED
 from tests.test_unload_rdm_guard import TestSmartUnloadRdmEarlyStopGuard as UnloadFixture
 
@@ -69,6 +69,15 @@ class TestParkTool:
         instance._retract.assert_not_called()
         assert manager.parked_tools() == [1]
         assert manager.variables["ace_filament_pos"] == FILAMENT_STATE_BOWDEN
+
+    def test_a_parked_filament_is_neither_loaded_nor_parked_behind_the_hub(self):
+        # Staged at the intake: the extruder-only retract never passes the
+        # ACE hooks that would reset park_state, so loaded would stick.
+        manager, instance = manager_with(PATHS_PER_TOOL)
+
+        run(instance, lambda: manager.park_tool(1))
+
+        instance.set_slot_park_state.assert_called_once_with(1, SLOT_PARK_STATE_UNKNOWN)
 
     def test_feed_assist_stops_while_the_cut_runs(self):
         """The ACE needs a second or more to stop assisting; the cut takes
