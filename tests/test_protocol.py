@@ -241,6 +241,7 @@ class TestAceProtoProtocolAdapter:
                 "result": {
                     "status": "ready",
                     "status_code": 1,
+                    "action": "feeding",
                     "dryer_status": {
                         "status": "drying",
                         "state_detail": "keeping",
@@ -307,6 +308,7 @@ class TestAceProtoProtocolAdapter:
                 "result": {
                     "status": "unknown",
                     "status_code": 77,
+                    "action": "none",
                     "dryer_status": {
                         "status": "unknown",
                         "state_detail": "unknown",
@@ -336,6 +338,25 @@ class TestAceProtoProtocolAdapter:
                 },
             }
         ]
+
+    def _status_action(self, *slot_state_codes):
+        """Decode a GET_STATUS frame whose loaded slots carry the given states."""
+        payload = _pb_uint(1, 1)
+        for code in slot_state_codes:
+            payload += _pb_bytes(9, _pb_uint(1, code) + _pb_uint(2, 2))
+        inner = b"\x80\x09\x00\x06" + bytes([len(payload)]) + payload
+        frame = b"\xFF\xAA" + inner + struct.pack("<H", _calc_crc(inner)) + b"\xFE"
+        responses, _, _ = self.adapter.extract_responses(bytearray(frame), _calc_crc)
+        return responses[0]["result"]["action"]
+
+    def test_status_action_is_none_while_every_slot_is_idle(self):
+        assert self._status_action(0, 0) == "none"
+
+    def test_status_action_reports_the_unwinding_slot(self):
+        assert self._status_action(0, 2) == "unwinding"
+
+    def test_status_action_ignores_an_assist_hold(self):
+        assert self._status_action(0, 3) == "none"
 
     def test_extract_responses_normalizes_generic_response_code(self):
         payload = _pb_uint(1, 2)

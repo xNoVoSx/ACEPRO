@@ -422,12 +422,20 @@ class AceProtoProtocolAdapter(AceProtocolAdapter):
                         "rfid": ACE2_FILAMENT_TO_RFID_STATE.get(filament_state, 0),
                     }
                 )
+            # ACE1 reports a device-level action; ACE2 only reports per-slot
+            # states, so derive it from the slot that is moving filament.
+            # An assist hold ("shifting") is not a move.
+            action = next(
+                (slot["status"] for slot in slots if slot["status"] in ("feeding", "unwinding")),
+                "none",
+            )
             return {
                 "code": 0,
                 "msg": ACE2_RESPONSE_CODE_NAMES[0],
                 "result": {
                     "status": ACE2_WORK_STATUS_BY_CODE.get(work_state_code, "unknown"),
                     "status_code": work_state_code,
+                    "action": action,
                     "dryer_status": {
                         "status": ACE2_DRY_STATUS_BY_CODE.get(dry_state_code, "unknown"),
                         "state_detail": ACE2_DRY_STATE_DETAIL_BY_CODE.get(dry_state_code, "unknown"),
