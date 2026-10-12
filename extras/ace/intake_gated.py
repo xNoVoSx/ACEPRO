@@ -17,7 +17,7 @@ Selected with ``toolhead_strategy: intake_gated``; the default,
 ``sensor_push``, is the fixed-length motion in instance.py / manager.py.
 """
 
-from .config import SENSOR_TOOLHEAD
+from .config import SENSOR_TOOLHEAD, FeedAbortedByFirmware
 from .rollback_assist import rollback_assist
 
 STRATEGY_SENSOR_PUSH = "sensor_push"
@@ -165,7 +165,7 @@ class IntakeGatedTransfer:
         timeout_s = length / speed * instance.timeout_multiplier
         waited = 0.0
         while self.intake.intake_edges() == mark and not self._at_toolhead_sensor():
-            error = None
+            error = slot_error = None
             if waited > instance.FEED_ERROR_GRACE_S:
                 slot_error = instance._get_slot_feed_error(local_slot)
                 if slot_error is not None:
@@ -177,6 +177,8 @@ class IntakeGatedTransfer:
                          f"the intake sensor within {length:.0f}mm of feed.")
             if error is not None:
                 instance._stop_feed(local_slot)
+                if slot_error is not None:
+                    raise FeedAbortedByFirmware(error)
                 raise ValueError(error)
             instance.dwell(INTAKE_POLL_S)
             waited += INTAKE_POLL_S

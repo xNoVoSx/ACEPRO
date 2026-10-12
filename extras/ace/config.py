@@ -11,6 +11,12 @@ from enum import Enum
 from .protocol import get_default_baud_for_protocol
 
 
+class FeedAbortedByFirmware(ValueError):
+    """The ACE stopped its own feed on a stall (slot gear_err). The filament
+    is still in its gears and nothing was pushed by the extruder, so a
+    pull-back frees nothing and can only take it out of the gears' reach."""
+
+
 # ========== ACE Instance Constants ==========
 
 # Filament position state constants

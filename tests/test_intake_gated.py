@@ -12,6 +12,7 @@ of polls, and the toolhead sensor follows the extruder's position.
 
 import pytest
 
+from ace.config import FeedAbortedByFirmware
 from ace.intake_gated import IntakeGatedTransfer, resolve_intake_sensor
 from ace.protocol_ace1 import AceJsonProtocolAdapter
 
@@ -212,7 +213,7 @@ def test_a_firmware_feed_error_ends_the_wait_at_once():
     instance.FEED_ERROR_GRACE_S = -1.0
     instance.slot_error = "feed_error"
 
-    with pytest.raises(ValueError, match="feed_error"):
+    with pytest.raises(FeedAbortedByFirmware, match="feed_error"):
         transfer_for(instance).load(SLOT)
 
     assert instance.steps == ["assist off", "ace feed 2 300@30", "ace stop"]

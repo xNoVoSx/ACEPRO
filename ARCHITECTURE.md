@@ -1992,7 +1992,10 @@ know the paths; it announces the tool and the printer config acts.
   (`FEEDER=ACE` is not used): the extruder pulls the filament to the sensor.
 - A load that does not reach the toolhead sensor is repeated
   `toolhead_load_retries` times (default 0): 150 mm back, `FEEDER=ACE`
-  routed again, feed again.
+  routed again, feed again. A feed the ACE aborted itself (slot
+  `gear_err`, `FeedAbortedByFirmware`) is retried without the pull-back:
+  the filament is still in the gears and a pull-back after an early stall
+  took it out of their reach.
 - `toolchange_homing_axes` (default `xyz`): the axes `ACE_CHANGE_TOOL` homes
   first when they are unhomed (`commands.toolchange_homing_script`);
   `_ACE_PRE_TOOLCHANGE` skips its Z lift while Z is unhomed. Kobra X: `x`.

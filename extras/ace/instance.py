@@ -7,6 +7,7 @@ import time
 import json
 import copy
 from .config import (
+    FeedAbortedByFirmware,
     park_pull_length,
     INSTANCE_MANAGERS,
     SLOTS_PER_ACE,
@@ -1078,7 +1079,7 @@ class AceInstance:
                 slot_error = self._get_slot_feed_error(local_slot)
                 if slot_error is not None:
                     self._stop_feed(local_slot)
-                    raise ValueError(
+                    raise FeedAbortedByFirmware(
                         f"ACE[{self.instance_num}]: Firmware aborted the feed on "
                         f"slot {local_slot}: {slot_error}. Filament cannot "
                         f"advance - check spool, slot outlet and filament path."
@@ -1097,7 +1098,7 @@ class AceInstance:
             # 60s can chew the filament and leave fragments in the toolhead.
             slot_error = self._get_slot_feed_error(local_slot)
             if slot_error is not None:
-                raise ValueError(
+                raise FeedAbortedByFirmware(
                     f"ACE[{self.instance_num}]: Firmware aborted the feed on "
                     f"slot {local_slot}: {slot_error}. Skipping extruder "
                     f"assist - filament cannot advance."
@@ -1223,6 +1224,20 @@ class AceInstance:
                         self.extruder_feeding_speed
                     )
                 break
+            except FeedAbortedByFirmware as e:
+                # Still in the gears, nothing pushed: pulling back would only
+                # lose the grip (a stall within the first 150 mm did).
+                self.gcode.respond_info(
+                    f"ACE[{self.instance_num}]: Exception during feed to toolhead: {e}, "
+                    f"the ACE stopped the feed itself - filament stays in its gears"
+                )
+                if attempt == attempts:
+                    raise
+                self.gcode.respond_info(
+                    f"ACE[{self.instance_num}]: Retrying the load of T{tool} "
+                    f"(attempt {attempt + 1} of {attempts})"
+                )
+                self.manager.route_to_tool(tool, self.load_feeder())
             except Exception as e:
                 self.gcode.respond_info(
                     f"ACE[{self.instance_num}]: Exception during feed to toolhead: {e}, "
@@ -2717,7 +2732,7 @@ class AceInstance:
                 slot_error = self._get_slot_feed_error(slot)
                 if slot_error is not None:
                     self._stop_feed(slot)
-                    raise ValueError(
+                    raise FeedAbortedByFirmware(
                         f"ACE[{self.instance_num}]: Firmware aborted the feed on "
                         f"slot {slot}: {slot_error}. Filament cannot advance - "
                         f"check spool, slot outlet and filament path."

@@ -19,6 +19,7 @@ from ace.ace2_bus import Ace2BusSession
 from ace.instance import AceInstance
 from ace.config import (
     ACE_INSTANCES,
+    FeedAbortedByFirmware,
     INSTANCE_MANAGERS,
     SLOTS_PER_ACE,
     SENSOR_TOOLHEAD,
@@ -980,6 +981,28 @@ class TestFeedFilamentIntoToolheadRetries(unittest.TestCase):
 
         instance._retract.assert_called_once_with(0, 150, instance.retract_speed)
         manager.state.set_and_save.assert_not_called()
+
+    @patch('ace.instance.AceSerialManager')
+    def test_firmware_aborted_feed_is_not_pulled_back(self, mock_serial_mgr_class):
+        # The device stopped its own gears on a stall; a pull-back of the
+        # usual 150 mm after a stall within the first 150 mm takes the
+        # filament out of the gears, and nothing upstream was pushed.
+        instance = AceInstance(0, self.ace_config, self.mock_printer)
+        manager = Mock()
+        manager.has_rdm_sensor.return_value = False
+        manager.get_switch_state.return_value = False
+        INSTANCE_MANAGERS[0] = manager
+
+        instance.wait_ready = Mock()
+        instance._feed_to_toolhead_with_extruder_assist = Mock(
+            side_effect=FeedAbortedByFirmware("feed_error"))
+        instance._retract = Mock()
+        instance._extruder_move = Mock()
+
+        with self.assertRaises(FeedAbortedByFirmware):
+            instance._feed_filament_into_toolhead(0)
+
+        instance._retract.assert_not_called()
 
     @patch('ace.instance.AceSerialManager')
     def test_precondition_blocks_toolhead_when_rdm_available(self, mock_serial_mgr_class):
