@@ -1,7 +1,7 @@
-"""The slot's gear screen offers a Force Unload: ACE_SMART_UNLOAD TOOL=<n>
-behind KlipperScreen's Accept/Cancel dialog, for a filament the driver has
-no tool on record for. It took the place of the "Empty" material, which
-Save never accepted. Imported with GTK and KlipperScreen stubbed out.
+"""The slot's Load and Unload dialogs offer a third choice, Force Unload:
+ACE_SMART_UNLOAD TOOL=<n> for a filament the driver has no tool on record
+for. "Empty" left the gear screen's material list, which Save never
+accepted. Imported with GTK and KlipperScreen stubbed out.
 """
 import importlib.util
 import sys
@@ -36,18 +36,26 @@ def acepro():
 def make_panel(acepro):
     panel = acepro.Panel.__new__(acepro.Panel)
     panel._screen = MagicMock()
+    panel.sent = []
+    panel._send_gcode = lambda script: panel.sent.append(script) or True
     return panel
 
 
-def test_force_unload_asks_first_then_sends_the_printer_tool(acepro):
+def test_force_unload_sends_the_printer_tool(acepro):
     panel = make_panel(acepro)
 
-    panel.confirm_force_unload(None, 5)
+    panel._force_unload(5)
 
-    (widget, text, method, params), _ = panel._screen._confirm_send_action.call_args
-    assert "T5" in text
-    assert method == "printer.gcode.script"
-    assert params == {"script": "ACE_SMART_UNLOAD TOOL=5"}
+    assert panel.sent == ["ACE_SMART_UNLOAD TOOL=5"]
+
+
+@pytest.mark.parametrize("action", ["Load", "Unload"])
+def test_the_slot_dialogs_offer_a_force_unload_as_third_choice(acepro, action):
+    panel = make_panel(acepro)
+
+    names = [b["name"] for b in panel._slot_dialog_buttons(action)]
+
+    assert names == ["Cancel", action, "Force Unload"]
 
 
 def test_empty_is_no_longer_a_selectable_material(acepro):

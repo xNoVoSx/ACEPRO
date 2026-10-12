@@ -24,6 +24,8 @@ TOOL_CHANGER = "kx_toolchanger"
 WIDE_LAYOUT_MIN_WIDTH = 525
 # The Utilities view's three columns of 160 px buttons need 544 px likewise.
 WIDE_UTILITIES_MIN_WIDTH = 544
+# Response id of the slot dialogs' third button; Gtk's own ids are <= 0.
+RESP_FORCE_UNLOAD = 100
 
 
 class Panel(ScreenPanel):
@@ -1530,15 +1532,14 @@ class Panel(ScreenPanel):
         label.set_line_wrap(True)
         label.set_justify(Gtk.Justification.CENTER)
 
-        buttons = [
-            {"name": "Cancel", "response": Gtk.ResponseType.CANCEL},
-            {"name": "Load", "response": Gtk.ResponseType.OK}
-        ]
+        buttons = self._slot_dialog_buttons("Load")
 
         def load_response(dialog, response_id):
             self._gtk.remove_dialog(dialog)
             if response_id == Gtk.ResponseType.OK:
                 self._load_tool(global_tool)
+            elif response_id == RESP_FORCE_UNLOAD:
+                self._force_unload(global_tool)
 
         self._gtk.Dialog(f"Load Tool T{global_tool}", buttons, label, load_response)
 
@@ -1696,18 +1697,35 @@ class Panel(ScreenPanel):
         label.set_line_wrap(True)
         label.set_justify(Gtk.Justification.CENTER)
 
-        buttons = [
-            {"name": "Cancel", "response": Gtk.ResponseType.CANCEL},
-            {"name": "Unload", "response": Gtk.ResponseType.OK}
-        ]
+        buttons = self._slot_dialog_buttons("Unload")
 
         def unload_response(dialog, response_id):
             self._gtk.remove_dialog(dialog)
             if response_id == Gtk.ResponseType.OK:
                 self._send_gcode("TR")
                 self._screen.show_popup_message("Unloading...", 1)
+            elif response_id == RESP_FORCE_UNLOAD:
+                self._force_unload(global_tool)
 
         self._gtk.Dialog(f"Unload Tool T{global_tool}", buttons, label, unload_response)
+
+    def _slot_dialog_buttons(self, action):
+        """Cancel, the dialog's own action (Load or Unload), and Force Unload:
+        the slot's filament out through ACE_SMART_UNLOAD TOOL=, whatever the
+        driver has on record. On both dialogs, since a filament the driver
+        lost track of shows its slot as not loaded."""
+        return [
+            {"name": "Cancel", "response": Gtk.ResponseType.CANCEL},
+            {"name": action, "response": Gtk.ResponseType.OK},
+            {"name": "Force Unload", "response": RESP_FORCE_UNLOAD},
+        ]
+
+    def _force_unload(self, tool):
+        cmd = f"ACE_SMART_UNLOAD TOOL={tool}"
+        if self._send_gcode(cmd):
+            self._screen.show_popup_message(f"Force unload T{tool}...", 1)
+        else:
+            self._screen.show_popup_message("Failed to send force unload", 2)
 
     def show_slot_settings(self, widget, instance_id, local_slot):
         """Show slot configuration screen"""
@@ -3000,13 +3018,6 @@ class Panel(ScreenPanel):
 
             main_box.pack_start(row2, False, False, 0)
 
-            force_btn = Gtk.Button(label="Force Unload")
-            force_btn.get_style_context().add_class("color2")
-            force_btn.get_style_context().add_class("ace_compact_btn")
-            force_btn.set_size_request(-1, 36)
-            force_btn.connect("clicked", self.confirm_force_unload, global_tool)
-            main_box.pack_start(force_btn, False, False, 0)
-
             # Selection area — right_box fills all remaining height at full width
             self.right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
             self.right_box.set_hexpand(True)
@@ -3113,12 +3124,6 @@ class Panel(ScreenPanel):
 
         left_box.pack_start(action_box, True, True, 0)
 
-        force_btn = Gtk.Button(label="Force Unload")
-        force_btn.get_style_context().add_class("color2")
-        force_btn.set_size_request(-1, 55)
-        force_btn.connect("clicked", self.confirm_force_unload, global_tool)
-        left_box.pack_start(force_btn, True, True, 0)
-
         # Right column - Selection panels (compact)
         self.right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
         self.right_box.set_hexpand(True)
@@ -3198,16 +3203,6 @@ class Panel(ScreenPanel):
                 )
 
         self.clear_right_column()
-
-    def confirm_force_unload(self, widget, tool):
-        """Unload T<tool> with ACE_SMART_UNLOAD TOOL=, after KlipperScreen's
-        Accept/Cancel dialog: the way out when the driver has no tool on
-        record for the filament at the toolhead."""
-        self._screen._confirm_send_action(
-            widget,
-            f"Force unload T{tool}?\n\nCuts and pulls this slot's filament back "
-            f"into the ACE, whatever the driver has on record.",
-            "printer.gcode.script", {"script": f"ACE_SMART_UNLOAD TOOL={tool}"})
 
     def show_color_selection(self, widget):
         """Show compact color picker in right column"""
