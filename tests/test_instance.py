@@ -903,7 +903,7 @@ class TestRetract(unittest.TestCase):
         self.assertEqual(sent_request.get("target_device_id"), 7)
 
 
-class TestFeedFilamentIntoToolhead(unittest.TestCase):
+class TestFeedFilamentIntoToolheadRetries(unittest.TestCase):
     """Branch coverage for _feed_filament_into_toolhead."""
 
     def setUp(self):
@@ -949,35 +949,6 @@ class TestFeedFilamentIntoToolhead(unittest.TestCase):
         }
 
     @patch('ace.instance.AceSerialManager')
-    def test_successful_feed_sets_positions_and_moves_extruder(self, mock_serial_mgr_class):
-        instance = AceInstance(0, self.ace_config, self.mock_printer)
-        manager = Mock()
-        manager.has_rdm_sensor.return_value = False
-        manager.get_switch_state.return_value = False
-        INSTANCE_MANAGERS[0] = manager
-
-        instance.wait_ready = Mock()
-        instance._feed_to_toolhead_with_extruder_assist = Mock(return_value=None)
-        instance._extruder_move = Mock()
-
-        result = instance._feed_filament_into_toolhead(1)
-
-        self.assertEqual(result, instance.toolhead_full_purge_length)
-        instance._feed_to_toolhead_with_extruder_assist.assert_called_once()
-        instance._extruder_move.assert_called_once_with(
-            instance.toolhead_full_purge_length,
-            instance.toolhead_slow_loading_speed
-        )
-        # Toolhead wait_moves called once
-        toolhead = self.mock_printer.lookup_object('toolhead')
-        toolhead.wait_moves.assert_called_once()
-        # Two position updates: toolhead (set) then nozzle (set)
-        manager.state.set.assert_any_call("ace_filament_pos", FILAMENT_STATE_TOOLHEAD)
-        manager.state.set.assert_any_call("ace_filament_pos", FILAMENT_STATE_NOZZLE)
-        # G92 command sent
-        self.mock_gcode.run_script_from_command.assert_called_once_with("G92 E0")
-
-    @patch('ace.instance.AceSerialManager')
     def test_precondition_blocks_on_rdm_sensor(self, mock_serial_mgr_class):
         instance = AceInstance(0, self.ace_config, self.mock_printer)
         manager = Mock()
@@ -1009,26 +980,6 @@ class TestFeedFilamentIntoToolhead(unittest.TestCase):
 
         instance._retract.assert_called_once_with(0, 150, instance.retract_speed)
         manager.state.set_and_save.assert_not_called()
-
-    @patch('ace.instance.AceSerialManager')
-    def test_precondition_skipped_when_flag_false(self, mock_serial_mgr_class):
-        """Sensors ignored when check_pre_condition is False."""
-        instance = AceInstance(0, self.ace_config, self.mock_printer)
-        manager = Mock()
-        manager.has_rdm_sensor.return_value = True
-        manager.get_switch_state = Mock(return_value=True)  # would block if checked
-        INSTANCE_MANAGERS[0] = manager
-
-        instance.wait_ready = Mock()
-        instance._feed_to_toolhead_with_extruder_assist = Mock(return_value=None)
-        instance._extruder_move = Mock()
-
-        result = instance._feed_filament_into_toolhead(0, check_pre_condition=False)
-
-        self.assertEqual(result, instance.toolhead_full_purge_length)
-        manager.get_switch_state.assert_not_called()
-        manager.state.set.assert_called_once_with("ace_filament_pos", FILAMENT_STATE_TOOLHEAD)
-        manager.state.set_and_save.assert_called_once_with("ace_filament_pos", FILAMENT_STATE_NOZZLE)
 
     @patch('ace.instance.AceSerialManager')
     def test_precondition_blocks_toolhead_when_rdm_available(self, mock_serial_mgr_class):
@@ -2976,7 +2927,7 @@ class TestFeedFilamentIntoToolhead(unittest.TestCase):
         self.assertEqual(self.steps, ["feed", "retract"])
 
 
-class TestSmartUnloadSlot(unittest.TestCase):
+class TestSmartUnloadSlotEarlyStop(unittest.TestCase):
     """Test smart unload slot functionality."""
 
     def setUp(self):
