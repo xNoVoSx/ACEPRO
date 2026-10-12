@@ -161,6 +161,20 @@ def test_a_narrow_display_still_offers_every_control():
     assert panel.match_mode_button.get_label() == "Exact"
 
 
+def test_the_slot_gear_screen_offers_a_force_unload_in_both_orientations():
+    # The orientation comes from the real Gdk screen; the layout under test
+    # is picked per call.
+    panel, screen, Gtk = _make_panel(480, 320)
+    for portrait in (False, True):
+        panel._is_portrait = lambda p=portrait: p
+        panel.show_slot_config_screen(0, 0)
+        labels = _labels(panel.content, Gtk)
+        assert "Force Unload" in labels, (portrait, labels)
+        if not portrait:
+            needed = panel.content.get_preferred_width().minimum_width
+            assert needed <= screen.gtk.content_width, needed
+
+
 def test_a_wide_display_keeps_the_full_labels():
     panel, screen, Gtk = _make_panel(800, 480)
 

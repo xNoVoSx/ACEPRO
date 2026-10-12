@@ -46,8 +46,9 @@ class Panel(ScreenPanel):
     }
 
     def material_options(self):
-        """Single source of truth for selectable materials."""
-        return ["Empty"] + list(self.FILAMENT_TEMP_DEFAULTS.keys())
+        """Single source of truth for selectable materials. "Empty" is not
+        one: whether a slot holds a spool is the ACE's to report."""
+        return list(self.FILAMENT_TEMP_DEFAULTS.keys())
 
     def __init__(self, screen, title):
         super().__init__(screen, title)
@@ -2891,10 +2892,6 @@ class Panel(ScreenPanel):
         slot_status = slot_data.get("status", "empty")
         current_material = slot_data.get("material", "")
 
-        # Track whether this slot should allow selecting "Empty" in the material list
-        self.config_slot_allows_empty = (
-            slot_status == "empty" or current_material in ["Empty", "", None]
-        )
 
         if (slot_status == "empty" or
                 current_material in ["Empty", "", None]):
@@ -3003,6 +3000,13 @@ class Panel(ScreenPanel):
 
             main_box.pack_start(row2, False, False, 0)
 
+            force_btn = Gtk.Button(label="Force Unload")
+            force_btn.get_style_context().add_class("color2")
+            force_btn.get_style_context().add_class("ace_compact_btn")
+            force_btn.set_size_request(-1, 36)
+            force_btn.connect("clicked", self.confirm_force_unload, global_tool)
+            main_box.pack_start(force_btn, False, False, 0)
+
             # Selection area — right_box fills all remaining height at full width
             self.right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
             self.right_box.set_hexpand(True)
@@ -3109,6 +3113,12 @@ class Panel(ScreenPanel):
 
         left_box.pack_start(action_box, True, True, 0)
 
+        force_btn = Gtk.Button(label="Force Unload")
+        force_btn.get_style_context().add_class("color2")
+        force_btn.set_size_request(-1, 55)
+        force_btn.connect("clicked", self.confirm_force_unload, global_tool)
+        left_box.pack_start(force_btn, True, True, 0)
+
         # Right column - Selection panels (compact)
         self.right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
         self.right_box.set_hexpand(True)
@@ -3138,10 +3148,7 @@ class Panel(ScreenPanel):
         title.get_style_context().add_class("description")
         self.right_box.pack_start(title, False, False, 0)
 
-        # Scrollable material list with Empty option
         materials = self.material_options()
-        if not getattr(self, "config_slot_allows_empty", True):
-            materials = [m for m in materials if m != "Empty"]
 
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -3189,11 +3196,18 @@ class Panel(ScreenPanel):
                 logging.info(
                     f"ACE: Auto-set temperature to {new_temp}°C for {material}"
                 )
-        elif material == "Empty" and previous_material != material:
-            self.config_temp = 0
-            self.temp_btn.set_label("Temperature: Not Set")
 
         self.clear_right_column()
+
+    def confirm_force_unload(self, widget, tool):
+        """Unload T<tool> with ACE_SMART_UNLOAD TOOL=, after KlipperScreen's
+        Accept/Cancel dialog: the way out when the driver has no tool on
+        record for the filament at the toolhead."""
+        self._screen._confirm_send_action(
+            widget,
+            f"Force unload T{tool}?\n\nCuts and pulls this slot's filament back "
+            f"into the ACE, whatever the driver has on record.",
+            "printer.gcode.script", {"script": f"ACE_SMART_UNLOAD TOOL={tool}"})
 
     def show_color_selection(self, widget):
         """Show compact color picker in right column"""
